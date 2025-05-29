@@ -54,8 +54,12 @@ static occa::memory o_S_avg, o_S2_avg;
 // derivatives
 // ARK replace with # NScalar fields instead of hard code 
 static occa::memory o_dvx, o_dvy, o_dvz;
-static occa::memory o_s0, o_s1;
-static occa::memory o_ds0, o_ds1;
+
+//-------- Scalar 0-3
+static occa::memory o_s0, o_ds0;
+static occa::memory o_s1, o_ds1;
+static occa::memory o_s2, o_ds2;
+static occa::memory o_s3, o_ds3;
 
 // if higher-order
 static occa::memory o_U3_avg, o_U4_avg;
@@ -281,12 +285,6 @@ void budgets::run(dfloat time, bool comp_skew, bool comp_TKEbudget, bool comp_TH
   o_vv_avg = o_U2_avg + 1 * offsetByte;
   o_ww_avg = o_U2_avg + 2 * offsetByte;
 
-//  occa::memory &o_dvx = platform->o_mempool.slice0;
-//  occa::memory &o_dvy = platform->o_mempool.slice3;
-//  occa::memory &o_dvz = platform->o_mempool.slice6;
-//  occa::memory &o_ds0 = platform->o_mempool.slice9;
-//  occa::memory &o_ds1 = platform->o_mempool.slice12;
-
   o_u_cov.copyFrom(o_uu_avg, mesh->Nlocal*sizeof(dfloat), 0*offsetByte);
   EXYsame(N, a, b, 1, o_vx, o_vy, o_u_cov + 1 * offsetByte);
   EXYsame(N, a, b, 1, o_vx, o_vz, o_u_cov + 2 * offsetByte);
@@ -425,83 +423,122 @@ void budgets::run(dfloat time, bool comp_skew, bool comp_TKEbudget, bool comp_TH
   if(comp_THFbudget) {
 
     cds_t* cds = nrs->cds;
-
     const dlong N = mesh->Nelements * mesh->Np;
-
-    o_s0 = cds->o_S + 0 * offsetByte;
-    o_s1 = cds->o_S + 1 * offsetByte;
-
-    nrs->gradientVolumeKernel(
-    mesh->Nelements,
-    mesh->o_vgeo,
-    mesh->o_D,
-    nrs->fieldOffset,
-    o_s0,
-    o_ds0);
-    
-    oogs::startFinish(o_ds0, nrs->NVfields, nrs->fieldOffset,ogsDfloat, ogsAdd, nrs->gsh);
-
-    platform->linAlg->axmyVector(
-      mesh->Nlocal,
-      nrs->fieldOffset,
-      0,
-      1.0,
-      nrs->meshV->o_invLMM,
-      o_ds0);
-
-    nrs->gradientVolumeKernel(
-    mesh->Nelements,
-    mesh->o_vgeo,
-    mesh->o_D,
-    nrs->fieldOffset,
-    o_s1,
-    o_ds1);
-
-    oogs::startFinish(o_ds1, nrs->NVfields, nrs->fieldOffset,ogsDfloat, ogsAdd, nrs->gsh);
-
-    platform->linAlg->axmyVector(
-      mesh->Nlocal,
-      nrs->fieldOffset,
-      0,
-      1.0,
-      nrs->meshV->o_invLMM,
-      o_ds1);
-
-    EXYsame(N, a, b, nrs->NVfields, o_dvx, o_ds0, o_dxuS_avg + 0 * nrs->NVfields * offsetByte);
-    EXYsame(N, a, b, nrs->NVfields, o_dvx, o_ds1, o_dxuS_avg + 1 * nrs->NVfields * offsetByte);
-    EXYsame(N, a, b, nrs->NVfields, o_dvy, o_ds0, o_dxvS_avg + 0 * nrs->NVfields * offsetByte);
-    EXYsame(N, a, b, nrs->NVfields, o_dvy, o_ds1, o_dxvS_avg + 1 * nrs->NVfields * offsetByte);
-    EXYsame(N, a, b, nrs->NVfields, o_dvz, o_ds0, o_dxwS_avg + 0 * nrs->NVfields * offsetByte);
-    EXYsame(N, a, b, nrs->NVfields, o_dvz, o_ds1, o_dxwS_avg + 1 * nrs->NVfields * offsetByte);
+	int is = 0;
 
     EXYdiff(N, a, b, nrs->NVfields, cds->NSfields, o_dvx, cds->o_S, o_Sdxu_avg);
     EXYdiff(N, a, b, nrs->NVfields, cds->NSfields, o_dvy, cds->o_S, o_Sdxv_avg);
     EXYdiff(N, a, b, nrs->NVfields, cds->NSfields, o_dvz, cds->o_S, o_Sdxw_avg);
-
-    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds0, o_vx, o_udxS_avg + 0 * nrs->NVfields * offsetByte);
-    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds1, o_vx, o_udxS_avg + 1 * nrs->NVfields * offsetByte);
-    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds0, o_vy, o_vdxS_avg + 0 * nrs->NVfields * offsetByte);
-    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds1, o_vy, o_vdxS_avg + 1 * nrs->NVfields * offsetByte);
-    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds0, o_vz, o_wdxS_avg + 0 * nrs->NVfields * offsetByte);
-    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds1, o_vz, o_wdxS_avg + 1 * nrs->NVfields * offsetByte);
-
-    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds0, nrs->o_P, o_PdxS_avg + 0 * nrs->NVfields * offsetByte);
-    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds1, nrs->o_P, o_PdxS_avg + 1 * nrs->NVfields * offsetByte);
-
+	
     EXXYdiff(N, a, b, nrs->NVfields, cds->NSfields, nrs->o_U, cds->o_S, o_UUS_avg);
 
-// ARK USED the 2 commented lines below for the budgets...BUT not really for comparison yet???
-    EXXYdiff(N, a, b, 1, nrs->NVfields, o_s0, nrs->o_U, o_SSU_avg + 0 * nrs->NVfields * offsetByte);
-    EXXYdiff(N, a, b, 1, nrs->NVfields, o_s1, nrs->o_U, o_SSU_avg + 1 * nrs->NVfields * offsetByte);
+//-------- Scalar 0
+    is = 0;
+    o_s0 = cds->o_S + is * offsetByte;
+
+    nrs->gradientVolumeKernel(mesh->Nelements, mesh->o_vgeo, mesh->o_D, nrs->fieldOffset, o_s0, o_ds0);
+    oogs::startFinish(o_ds0, nrs->NVfields, nrs->fieldOffset,ogsDfloat, ogsAdd, nrs->gsh);
+    platform->linAlg->axmyVector(mesh->Nlocal, nrs->fieldOffset,  0, 1.0, nrs->meshV->o_invLMM, o_ds0);
+
+    EXYsame(N, a, b, nrs->NVfields, o_dvx, o_ds0, o_dxuS_avg + is * nrs->NVfields * offsetByte);
+    EXYsame(N, a, b, nrs->NVfields, o_dvy, o_ds0, o_dxvS_avg + is * nrs->NVfields * offsetByte);
+    EXYsame(N, a, b, nrs->NVfields, o_dvz, o_ds0, o_dxwS_avg + is * nrs->NVfields * offsetByte);
+
+
+    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds0, o_vx, o_udxS_avg + is * nrs->NVfields * offsetByte);
+    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds0, o_vy, o_vdxS_avg + is * nrs->NVfields * offsetByte);
+    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds0, o_vz, o_wdxS_avg + is * nrs->NVfields * offsetByte);
+
+    EXYdiff(N, a, b, nrs->NVfields, 1, o_ds0, nrs->o_P, o_PdxS_avg + is * nrs->NVfields * offsetByte);
+
+    EXXYdiff(N, a, b, 1, nrs->NVfields, o_s0, nrs->o_U, o_SSU_avg + is * nrs->NVfields * offsetByte);
+
+    EXYZsame(N, a, b, 1, 1, o_vx, o_vy, o_s0, o_uvS_avg + (is*3+0) * offsetByte);
+    EXYZsame(N, a, b, 1, 1, o_vx, o_vz, o_s0, o_uvS_avg + (is*3+1) * offsetByte);
+    EXYZsame(N, a, b, 1, 1, o_vy, o_vz, o_s0, o_uvS_avg + (is*3+2) * offsetByte);
+
+//-------- Scalar 1
+    if(nrs->Nscalar > 1) {
+      is = 1;
+      o_s1 = cds->o_S + is * offsetByte;
+      nrs->gradientVolumeKernel(mesh->Nelements, mesh->o_vgeo, mesh->o_D, nrs->fieldOffset, o_s1, o_ds1);
+      oogs::startFinish(o_ds1, nrs->NVfields, nrs->fieldOffset,ogsDfloat, ogsAdd, nrs->gsh);
+      platform->linAlg->axmyVector(mesh->Nlocal, nrs->fieldOffset, 0, 1.0, nrs->meshV->o_invLMM, o_ds1);
+
+      EXYsame(N, a, b, nrs->NVfields, o_dvx, o_ds1, o_dxuS_avg + is * nrs->NVfields * offsetByte);
+      EXYsame(N, a, b, nrs->NVfields, o_dvy, o_ds1, o_dxvS_avg + is * nrs->NVfields * offsetByte);
+      EXYsame(N, a, b, nrs->NVfields, o_dvz, o_ds1, o_dxwS_avg + is * nrs->NVfields * offsetByte);
+
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds1, o_vx, o_udxS_avg + is * nrs->NVfields * offsetByte);
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds1, o_vy, o_vdxS_avg + is * nrs->NVfields * offsetByte);
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds1, o_vz, o_wdxS_avg + is * nrs->NVfields * offsetByte);
+
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds1, nrs->o_P, o_PdxS_avg + is * nrs->NVfields * offsetByte);
+
+      EXXYdiff(N, a, b, 1, nrs->NVfields, o_s1, nrs->o_U, o_SSU_avg + is * nrs->NVfields * offsetByte);
 
 // ARK NOTE that in new version SHOULD change the order to uv, vw, wu instead
-    EXYZsame(N, a, b, 1, 1, o_vx, o_vy, o_s0, o_uvS_avg + 0 * offsetByte);
-    EXYZsame(N, a, b, 1, 1, o_vx, o_vz, o_s0, o_uvS_avg + 1 * offsetByte);
-    EXYZsame(N, a, b, 1, 1, o_vy, o_vz, o_s0, o_uvS_avg + 2 * offsetByte);
-    EXYZsame(N, a, b, 1, 1, o_vx, o_vy, o_s1, o_uvS_avg + 3 * offsetByte);
-    EXYZsame(N, a, b, 1, 1, o_vx, o_vz, o_s1, o_uvS_avg + 4 * offsetByte);
-    EXYZsame(N, a, b, 1, 1, o_vy, o_vz, o_s1, o_uvS_avg + 5 * offsetByte);
+      EXYZsame(N, a, b, 1, 1, o_vx, o_vy, o_s1, o_uvS_avg + (is*3+0) * offsetByte);
+      EXYZsame(N, a, b, 1, 1, o_vx, o_vz, o_s1, o_uvS_avg + (is*3+1) * offsetByte);
+      EXYZsame(N, a, b, 1, 1, o_vy, o_vz, o_s1, o_uvS_avg + (is*3+2) * offsetByte);
+    }
 
+//-------- Scalar 3
+    if(nrs->Nscalar > 2) {
+      is = 2;
+      o_s2 = cds->o_S + is * offsetByte;
+      nrs->gradientVolumeKernel(mesh->Nelements, mesh->o_vgeo, mesh->o_D, nrs->fieldOffset, o_s2, o_ds2);
+      oogs::startFinish(o_ds2, nrs->NVfields, nrs->fieldOffset,ogsDfloat, ogsAdd, nrs->gsh);
+      platform->linAlg->axmyVector(mesh->Nlocal, nrs->fieldOffset, 0, 1.0, nrs->meshV->o_invLMM, o_ds2);
+
+      EXYsame(N, a, b, nrs->NVfields, o_dvx, o_ds2, o_dxuS_avg + is * nrs->NVfields * offsetByte);
+      EXYsame(N, a, b, nrs->NVfields, o_dvy, o_ds2, o_dxvS_avg + is * nrs->NVfields * offsetByte);
+      EXYsame(N, a, b, nrs->NVfields, o_dvz, o_ds2, o_dxwS_avg + is * nrs->NVfields * offsetByte);
+
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds2, o_vx, o_udxS_avg + is * nrs->NVfields * offsetByte);
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds2, o_vy, o_vdxS_avg + is * nrs->NVfields * offsetByte);
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds2, o_vz, o_wdxS_avg + is * nrs->NVfields * offsetByte);
+
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds2, nrs->o_P, o_PdxS_avg + is * nrs->NVfields * offsetByte);
+
+      EXXYdiff(N, a, b, 1, nrs->NVfields, o_s2, nrs->o_U, o_SSU_avg + is * nrs->NVfields * offsetByte);
+
+// ARK NOTE that in new version SHOULD change the order to uv, vw, wu instead
+      EXYZsame(N, a, b, 1, 1, o_vx, o_vy, o_s2, o_uvS_avg + (is*3+0) * offsetByte);
+      EXYZsame(N, a, b, 1, 1, o_vx, o_vz, o_s2, o_uvS_avg + (is*3+1) * offsetByte);
+      EXYZsame(N, a, b, 1, 1, o_vy, o_vz, o_s2, o_uvS_avg + (is*3+2) * offsetByte);
+    }
+
+//-------- Scalar 4
+    if(nrs->Nscalar > 3) {
+      is = 3;
+      o_s3 = cds->o_S + 1 * offsetByte;
+      nrs->gradientVolumeKernel(mesh->Nelements, mesh->o_vgeo, mesh->o_D, nrs->fieldOffset, o_s3, o_ds3);
+      oogs::startFinish(o_ds3, nrs->NVfields, nrs->fieldOffset,ogsDfloat, ogsAdd, nrs->gsh);
+      platform->linAlg->axmyVector(mesh->Nlocal, nrs->fieldOffset, 0, 1.0, nrs->meshV->o_invLMM, o_ds3);
+
+      EXYsame(N, a, b, nrs->NVfields, o_dvx, o_ds3, o_dxuS_avg + is * nrs->NVfields * offsetByte);
+      EXYsame(N, a, b, nrs->NVfields, o_dvy, o_ds3, o_dxvS_avg + is * nrs->NVfields * offsetByte);
+      EXYsame(N, a, b, nrs->NVfields, o_dvz, o_ds3, o_dxwS_avg + is * nrs->NVfields * offsetByte);
+
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds3, o_vx, o_udxS_avg + is * nrs->NVfields * offsetByte);
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds3, o_vy, o_vdxS_avg + is * nrs->NVfields * offsetByte);
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds3, o_vz, o_wdxS_avg + is * nrs->NVfields * offsetByte);
+
+      EXYdiff(N, a, b, nrs->NVfields, 1, o_ds3, nrs->o_P, o_PdxS_avg + is * nrs->NVfields * offsetByte);
+
+      EXXYdiff(N, a, b, 1, nrs->NVfields, o_s3, nrs->o_U, o_SSU_avg + is * nrs->NVfields * offsetByte);
+
+// ARK NOTE that in new version SHOULD change the order to uv, vw, wu instead
+      EXYZsame(N, a, b, 1, 1, o_vx, o_vy, o_s3, o_uvS_avg + (is*3+0) * offsetByte);
+      EXYZsame(N, a, b, 1, 1, o_vx, o_vz, o_s3, o_uvS_avg + (is*3+1) * offsetByte);
+      EXYZsame(N, a, b, 1, 1, o_vy, o_vz, o_s3, o_uvS_avg + (is*3+2) * offsetByte);
+    }
+
+	if(nrs->Nscalar > 4) {
+        nrsCheck(1, MPI_COMM_SELF, EXIT_FAILURE,
+            "%s\n", "Number of scalars more than 4(max in budgets.cpp)! ");		
+    }
   } 
 
   timel = time;
@@ -617,14 +654,26 @@ void budgets::setup(nrs_t* nrs_, bool comp_skew, bool comp_TKEbudget, bool comp_
 
     //ARK note that this is also outputting the few extra terms which are used in the temperature variance budget,
     //    namely ttu, ttv, ttw
-    o_s0 = platform->device.malloc(nrs->fieldOffset ,  sizeof(dfloat));
-    o_s1 = platform->device.malloc(nrs->fieldOffset ,  sizeof(dfloat));
-    o_ds0 = platform->device.malloc(nrs->fieldOffset * nrs->NVfields ,  sizeof(dfloat));
-    o_ds1 = platform->device.malloc(nrs->fieldOffset * nrs->NVfields ,  sizeof(dfloat));
+//-------- Scalar 0
+    o_s0 = platform->device.malloc(nrs->fieldOffset,  sizeof(dfloat));
+    o_ds0 = platform->device.malloc(nrs->fieldOffset * nrs->NVfields,  sizeof(dfloat));
     platform->linAlg->fill(nrs->fieldOffset, 0.0, o_s0);
-    platform->linAlg->fill(nrs->fieldOffset, 0.0, o_s1);
     platform->linAlg->fill(nrs->fieldOffset * nrs->NVfields, 0.0, o_ds0);
+//-------- Scalar 1
+    o_s1 = platform->device.malloc(nrs->fieldOffset ,  sizeof(dfloat));
+    o_ds1 = platform->device.malloc(nrs->fieldOffset * nrs->NVfields ,  sizeof(dfloat));
+    platform->linAlg->fill(nrs->fieldOffset, 0.0, o_s1);
     platform->linAlg->fill(nrs->fieldOffset * nrs->NVfields, 0.0, o_ds1);
+//-------- Scalar 2
+    o_s2 = platform->device.malloc(nrs->fieldOffset ,  sizeof(dfloat));
+    o_ds2 = platform->device.malloc(nrs->fieldOffset * nrs->NVfields ,  sizeof(dfloat));
+    platform->linAlg->fill(nrs->fieldOffset, 0.0, o_s2);
+    platform->linAlg->fill(nrs->fieldOffset * nrs->NVfields, 0.0, o_ds2);
+//-------- Scalar 3
+    o_s3 = platform->device.malloc(nrs->fieldOffset ,  sizeof(dfloat));
+    o_ds3 = platform->device.malloc(nrs->fieldOffset * nrs->NVfields ,  sizeof(dfloat));
+    platform->linAlg->fill(nrs->fieldOffset, 0.0, o_s3);
+    platform->linAlg->fill(nrs->fieldOffset * nrs->NVfields, 0.0, o_ds3);
 
     o_dxuS_avg = platform->device.malloc(nrs->fieldOffset * nrs->NVfields * cds->NSfields ,  sizeof(dfloat));
     o_dxvS_avg = platform->device.malloc(nrs->fieldOffset * nrs->NVfields * cds->NSfields ,  sizeof(dfloat));
